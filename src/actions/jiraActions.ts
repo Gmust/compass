@@ -1,9 +1,10 @@
 import axios from "axios";
 import "dotenv/config";
-import type { GapAnalysis } from "../analysis/geminiAnalyzer.js";
+import type { GapAnalysis } from "../analysis/analyzer.js";
 import type { JiraTicket } from "../collectors/jiraCollector.js";
 import { logger } from "../utils/logger.js";
 
+// Jira doesn't accept plain text — descriptions must be in ADF (Atlassian Document Format)
 interface JiraAdfTextNode {
   type: "text";
   text: string;
@@ -113,12 +114,17 @@ function buildTicketUpdateText(ticket: JiraTicket, analysis: GapAnalysis): strin
   return auditLines.join("\n");
 }
 
-export async function createJiraIssue(summary: string, description: string): Promise<string | null> {
+export async function createJiraIssue(
+  summary: string,
+  description: string
+): Promise<string | null> {
+  const safeSummary = summary.slice(0, 255);
+
   try {
     const payload: JiraCreateIssuePayload = {
       fields: {
         project: { key: process.env.JIRA_PROJECT_KEY ?? "" },
-        summary,
+        summary: safeSummary,
         issuetype: { name: "Task" },
         description: toAdfDocument(description),
         labels: ["compass-generated"],

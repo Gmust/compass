@@ -1,88 +1,102 @@
-import { writeFile } from "node:fs/promises";
-import type { GapAnalysis } from "../analysis/geminiAnalyzer.js";
+import { writeFileSync } from "node:fs";
+import type { GapAnalysis } from "../analysis/analyzer.js";
 import type { GithubFile } from "../collectors/githubCollector.js";
 import type { JiraTicket } from "../collectors/jiraCollector.js";
 import { logger } from "../utils/logger.js";
 
-export async function generateAuditReport(
-  analysis: GapAnalysis,
-  tickets: JiraTicket[],
-  files: GithubFile[]
-): Promise<string> {
-  logger.info("Generating audit report...");
-
-  try {
-    const reportPath = "audit-report.md";
-    const markdown = buildReportMarkdown(analysis, tickets, files);
-
-    await writeFile(reportPath, markdown, "utf-8");
-
-    logger.success(`Audit report written to ${reportPath}`);
-    return reportPath;
-  } catch (error) {
-    if (error instanceof Error) {
-      logger.error(`Failed to write audit report: ${error.message}`);
-    }
-
-    throw error;
-  }
+export interface ReportData {
+  generatedAt: string;
+  tickets: JiraTicket[];
+  files: GithubFile[];
+  analysis: GapAnalysis;
 }
 
-function buildReportMarkdown(
+function buildMarkdown(data: ReportData): string {
+  const { generatedAt, tickets, files, analysis } = data;
+  const lines: string[] = [];
+
+  lines.push(`# Compass Audit Report`);
+  lines.push(`Generated: ${generatedAt}`);
+  lines.push(``);
+  lines.push(`## Summary`);
+  lines.push(`| | Count |`);
+  lines.push(`|---|---|`);
+  lines.push(`| Jira tickets scanned | ${tickets.length} |`);
+  lines.push(`| Files scanned | ${files.length} |`);
+  lines.push(`| Code gaps | ${analysis.gapsInCode.length} |`);
+  lines.push(`| Doc gaps | ${analysis.gapsInDocs.length} |`);
+  lines.push(`| Inconsistencies | ${analysis.inconsistencies.length} |`);
+  lines.push(`| Suggested tasks | ${analysis.suggestions.length} |`);
+  lines.push(``);
+
+  if (analysis.gapsInCode.length > 0) {
+    lines.push(`## Code Gaps`);
+    lines.push(`> Tickets with no matching implementation found in the codebase`);
+    lines.push(``);
+    for (const gap of analysis.gapsInCode) {
+      lines.push(`### ${gap.title}`);
+      lines.push(`- **Detail:** ${gap.detail}`);
+      if (gap.relatedTicket) lines.push(`- **Ticket:** ${gap.relatedTicket}`);
+      if (gap.relatedFile) lines.push(`- **File:** \`${gap.relatedFile}\``);
+      lines.push(``);
+    }
+  }
+
+  if (analysis.gapsInDocs.length > 0) {
+    lines.push(`## Documentation Gaps`);
+    lines.push(`> Code or features with no documentation`);
+    lines.push(``);
+    for (const gap of analysis.gapsInDocs) {
+      lines.push(`### ${gap.title}`);
+      lines.push(`- **Detail:** ${gap.detail}`);
+      if (gap.relatedFile) lines.push(`- **File:** \`${gap.relatedFile}\``);
+      lines.push(``);
+    }
+  }
+
+  if (analysis.inconsistencies.length > 0) {
+    lines.push(`## Inconsistencies`);
+    lines.push(`> Code that doesn't match what the Jira ticket describes`);
+    lines.push(``);
+    for (const gap of analysis.inconsistencies) {
+      lines.push(`### ${gap.title}`);
+      lines.push(`- **Detail:** ${gap.detail}`);
+      if (gap.relatedTicket) lines.push(`- **Ticket:** ${gap.relatedTicket}`);
+      if (gap.relatedFile) lines.push(`- **File:** \`${gap.relatedFile}\``);
+      lines.push(``);
+    }
+  }
+
+  if (analysis.suggestions.length > 0) {
+    lines.push(`## 💡 Suggested Tasks`);
+    lines.push(`> New tasks recommended by AI based on the audit`);
+    lines.push(``);
+    for (const suggestion of analysis.suggestions) {
+      lines.push(`- ${suggestion}`);
+    }
+    lines.push(``);
+  }
+
+  return lines.join("\n");
+}
+
+export function generateAuditReport(
   analysis: GapAnalysis,
   tickets: JiraTicket[],
   files: GithubFile[]
 ): string {
-  return [
-    "# Compass Audit Report",
-    "",
-    `Generated: ${new Date().toISOString()}`,
-    "",
-    "## Summary",
-    "",
-    `- Jira tickets analyzed: ${tickets.length}`,
-    `- Repository files analyzed: ${files.length}`,
-    `- Gaps in code: ${analysis.gapsInCode.length}`,
-    `- Gaps in docs: ${analysis.gapsInDocs.length}`,
-    `- Inconsistencies: ${analysis.inconsistencies.length}`,
-    `- Suggested new tickets: ${analysis.suggestions.length}`,
-    "",
-    formatGapSection("Gaps In Code", analysis.gapsInCode),
-    "",
-    formatGapSection("Gaps In Docs", analysis.gapsInDocs),
-    "",
-    formatGapSection("Inconsistencies", analysis.inconsistencies),
-    "",
-    formatSuggestionsSection(analysis.suggestions),
-    "",
-  ].join("\n");
-}
+  const data: ReportData = {
+    generatedAt: new Date().toLocaleString(),
+    tickets,
+    files,
+    analysis,
+  };
 
-function formatSuggestionsSection(suggestions: string[]) {
-  if (suggestions.length === 0) {
-    return "## Suggested New Tickets\n\nNone.";
-  }
+  const markdown = buildMarkdown(data);
+  const outputPath = `compass-report-${Date.now()}.md`;
 
-  const lines = suggestions.map((suggestion, index) => `${index + 1}. ${suggestion}`);
-  return ["## Suggested New Tickets", "", ...lines].join("\n");
-}
+  writeFileSync(outputPath, markdown, "utf-8");
+  logger.success(`Report saved to ${outputPath}`);
 
-function formatGapSection(title: string, gaps: GapAnalysis["gapsInCode"]) {
-  if (gaps.length === 0) return `## ${title}\n\nNone.`;
-
-  const entries = gaps.map((gap, index) => {
-    const lines = [`### ${index + 1}. ${gap.title}`, gap.detail];
-
-    if (gap.relatedTicket) {
-      lines.push(`- Related ticket: ${gap.relatedTicket}`);
-    }
-
-    if (gap.relatedFile) {
-      lines.push(`- Related file: ${gap.relatedFile}`);
-    }
-
-    return lines.join("\n");
-  });
-
-  return [`## ${title}`, ...entries].join("\n\n");
+  return outputPath;
 }

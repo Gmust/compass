@@ -33,8 +33,3 @@ export const logger: Logger = {
   section: (msg) => console.log(`\n${colors.cyan}━━━ ${msg} ━━━${colors.reset}\n`),
 };
 
-logger.section("Compass");
-logger.info("Starting analysis...");
-logger.success("Jira tickets fetched");
-logger.warn("2 tickets missing description");
-logger.error("GitHub token invalid");
