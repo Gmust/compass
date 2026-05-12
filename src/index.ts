@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { analyzeGaps } from "./analysis/geminiAnalyzer.js";
+import { analyzeGaps } from "./analysis/analyzer.js";
 import { applyJiraActions } from "./actions/jiraActions.js";
 import { generateAuditReport } from "./actions/reporter.js";
 import { fetchGithubFiles } from "./collectors/githubCollector.js";
